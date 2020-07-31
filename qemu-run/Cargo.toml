@@ -9,3 +9,5 @@ anyhow = "1.0.32"
 decoder = { path = "../decoder" }
 elf2table = { path = "../elf2table" }
 xmas-elf = "0.7.0"
+ggez = "0.5.1"
+rand = "0.7.3"

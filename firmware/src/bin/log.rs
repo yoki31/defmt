@@ -14,23 +14,29 @@ fn main() -> ! {
     binfmt::info!("The answer is {:u8}", 42);
 
     #[derive(Format)]
-    struct S {
-        x: u8,
-        y: u16,
+    struct Pixel {
+        idx: u8,
+        red: u8,
+        grn: u8,
+        blu: u8,
     }
 
-    #[derive(Format)]
-    struct X {
-        y: Y,
+
+    for j in (0..8).chain((0..8).rev()) {
+        for i in 0..8 {
+            binfmt::info!("{:?}", Pixel {
+                idx: i,
+                red: 255 - j << 5,
+                grn: 255 - i << 5,
+                blu: j << 5,
+            });
+            cortex_m::asm::delay(0x1000_0000);
+        }
     }
 
-    #[derive(Format)]
-    struct Y {
-        z: u8,
+    for _ in 0..3 {
+        cortex_m::asm::delay(0x8000_0000);
     }
-
-    binfmt::info!("{:?}", S { x: 1, y: 256 });
-    binfmt::info!("{:?}", X { y: Y { z: 42 } });
 
     loop {
         debug::exit(debug::EXIT_SUCCESS)
