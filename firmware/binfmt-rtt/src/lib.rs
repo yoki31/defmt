@@ -5,7 +5,6 @@
 #![no_std]
 
 use core::{
-    cmp,
     ptr::{self, NonNull},
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
@@ -14,7 +13,7 @@ use cortex_m::{interrupt, register};
 
 // TODO make configurable
 // NOTE use a power of 2 for best performance
-const SIZE: usize = 1024;
+const SIZE: usize = 4096 * 4;
 
 #[binfmt::global_logger]
 struct Logger;
@@ -99,7 +98,8 @@ impl Channel {
         }
 
         let cursor = write % SIZE;
-        let len = cmp::min(bytes.len(), available);
+        let len = bytes.len().min(available);
+
         unsafe {
             if cursor + len > SIZE {
                 // split memcpy
@@ -123,7 +123,9 @@ impl Channel {
                 );
             }
         }
-        self.write.store(write.wrapping_add(len), Ordering::Release);
+        self.write.store(write.wrapping_add(len) % SIZE, Ordering::Release);
+
+
         len
     }
 }

@@ -39,7 +39,11 @@ impl Table {
             None
         };
 
-        Ok((lvl, &self.entries[&index]))
+        if !self.entries.contains_key(&index) {
+            eprintln!("WARN: BAD TABLE IDX: {}", index);
+        }
+
+        Ok((lvl, self.entries.get(&index).ok_or_else(|| ())?))
     }
 }
 

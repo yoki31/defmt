@@ -1,6 +1,12 @@
 // fork of dk-run with binfmt support
 // (https://github.com/ferrous-systems/embedded-trainings-2020 @ 8ada5dc5d8a0befdc4169088b0a0868c1536a56e)
 
+use jemallocator::Jemalloc;
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
+use ggez;
 use core::{
     cmp,
     convert::{TryFrom, TryInto},
@@ -30,6 +36,8 @@ use probe_rs::{
 use probe_rs_rtt::{Rtt, ScanRegion};
 use structopt::StructOpt;
 use xmas_elf::{program::Type, sections::SectionData, symbol_table::Entry, ElfFile};
+use ggez::timer::yield_now;
+use crossbeam_channel::{unbounded, Receiver, TryRecvError};
 
 fn main() -> Result<(), anyhow::Error> {
     notmain().map(|code| process::exit(code))
@@ -243,10 +251,91 @@ fn notmain() -> Result<i32, anyhow::Error> {
         CONTINUE.store(false, Ordering::Relaxed);
     })?;
 
+    let (tx, rx) = unbounded::<String>();
+
+    let cont_ref = &CONTINUE;
+
+    // And finally we actually run our game, passing in our context and state.
+    let ui_hdl = spawn(move || -> Result<(), ()> {
+
+        let (x, y) = loop {
+            if !cont_ref.load(Ordering::Relaxed) {
+                return Err(());
+            }
+            match rx.try_recv() {
+                Ok(msg) => {
+                    let parts = msg.split(";").collect::<Vec<_>>();
+
+                    #[derive(Deserialize, Serialize)]
+                    struct Xy {
+                        x: usize,
+                        y: usize,
+                    }
+
+                    match parts.as_slice() {
+                        &[cmd, msg] if cmd.ends_with("GRAPH:LED:INIT") => {
+                            match from_str::<Xy>(msg) {
+                                Ok(msg) => {
+                                    break (msg.x, msg.y);
+                                }
+                                Err(e) => {
+                                    eprintln!("serde: {:?}, msg: {:?}", e, msg);
+                                }
+                            }
+                        }
+                        x => {
+                            eprintln!("INIT, What is {:?}?", x);
+                            // return Err(ggez::GameError::EventLoopError("brrt2".into()));
+                        }
+                    }
+                }
+                Err(TryRecvError::Empty) => {
+                    continue;
+                }
+                Err(_) => {
+                    return Err(());
+                }
+            }
+        };
+
+        X_CT.store(x, Ordering::Release);
+        Y_CT.store(y, Ordering::Release);
+
+        // Here we use a ContextBuilder to setup metadata about our game. First the title and author
+        let (ctx, events_loop) = &mut ggez::ContextBuilder::new("binfmt", "James Munns")
+            // Next we set up the window. This title will be displayed in the title bar of the window.
+            .window_setup(ggez::conf::WindowSetup::default().title("Binfmt Graphing"))
+            // Now we get to set the size of the window, which we use our SCREEN_SIZE constant from earlier to help with
+            .window_mode(ggez::conf::WindowMode::default().dimensions(900.0, 900.0 / x as f32))
+            // And finally we attempt to build the context and create the window. If it fails, we panic with the message
+            // "Failed to build ggez context"
+            .build()
+            .map_err(drop)?;
+
+        let mut covec = Vec::with_capacity(x * y);
+        for _ in 0..(x*y) {
+            covec.push(Color::default());
+        }
+
+        // Next we create a new instance of our GameState struct, which implements EventHandler
+        let state = &mut UiState {
+            rx,
+            colors: covec,
+            cont: cont_ref,
+            dirty: true,
+        };
+
+        let x = ggez::event::run(ctx, events_loop, state);
+
+        x.map_err(drop)
+    });
+
+
+
     // wait for breakpoint
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
-    let mut read_buf = [0; 1024];
+    let mut read_buf = [0; 8192];
     let mut frames = vec![];
     let mut was_halted = false;
     while CONTINUE.load(Ordering::Relaxed) {
@@ -256,7 +345,12 @@ fn notmain() -> Result<i32, anyhow::Error> {
             frames.extend_from_slice(&read_buf[..n]);
 
             while let Ok((frame, consumed)) = decoder::decode(&frames, &table) {
-                writeln!(stdout, "{}", frame.display(true))?;
+                if frame.format.starts_with("GRAPH") {
+                    tx.send(frame.display(false).to_string()).ok();
+                } else {
+                    writeln!(stdout, "{}", frame.display(true))?;
+                }
+
                 let n = frames.len();
                 frames.rotate_left(consumed);
                 frames.truncate(n - consumed);
@@ -264,6 +358,10 @@ fn notmain() -> Result<i32, anyhow::Error> {
         }
 
         let is_halted = core.core_halted()?;
+
+        if n < read_buf.len() {
+            yield_now();
+        }
 
         if is_halted && was_halted {
             break;
@@ -287,6 +385,8 @@ fn notmain() -> Result<i32, anyhow::Error> {
     let top_exception = backtrace(&core, pc, debug_frame, &range_names)?;
 
     core.reset_and_halt()?;
+
+    ui_hdl.join().ok();
 
     Ok(if top_exception == Some(TopException::HardFault) {
         SIGABRT
@@ -563,4 +663,149 @@ struct Registers {
     sp: u32,
     pc: u32,
     vtor: u32,
+}
+
+
+/// ----
+
+use ggez::{
+    event::EventHandler,
+    GameResult,
+    Context,
+};
+
+use std::time::Duration;
+use std::thread::spawn;
+
+struct UiState {
+    rx: Receiver<String>,
+    colors: Vec<Color>,
+    cont: &'static AtomicBool,
+    dirty: bool,
+}
+
+#[derive(Default, Copy, Clone, Debug)]
+struct Color {
+    red: u8,
+    grn: u8,
+    blu: u8,
+}
+
+use serde::{Serialize, Deserialize};
+use serde_json::from_str;
+
+#[derive(Serialize, Deserialize)]
+struct IRGB {
+    i: u8,
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
+impl EventHandler for UiState {
+    fn update(&mut self, _ctx: &mut Context) -> GameResult {
+        // eprintln!("EVENT LOOP");
+        loop {
+            if !self.cont.load(Ordering::Relaxed) {
+                return Err(ggez::GameError::EventLoopError("brrt3".into()));
+            }
+            match self.rx.try_recv() {
+                Ok(msg) => {
+                    let parts = msg.split(";").collect::<Vec<_>>();
+                    match parts.as_slice() {
+                        &[cmd, msg] if cmd.ends_with("GRAPH:LED") => {
+                            match from_str::<IRGB>(msg) {
+                                Ok(msg) => {
+                                    let new = Color { red: msg.r, grn: msg.g, blu: msg.b };
+                                    self.colors[msg.i as usize] = new;
+                                    self.dirty = true;
+                                }
+                                Err(e) => {
+                                    eprintln!("serde: {:?}, msg: {:?}", e, msg);
+                                }
+                            }
+                        }
+                        x => {
+                            eprintln!("What is {:?}?", x);
+                            // return Err(ggez::GameError::EventLoopError("brrt2".into()));
+                        }
+                    }
+                }
+                Err(TryRecvError::Empty) => {
+                    // yield_now();
+                    break;
+                }
+                Err(_) => {
+                    return Err(ggez::GameError::EventLoopError("brrt".into()));
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(1));
+
+        Ok(())
+    }
+
+    fn draw(&mut self, ctx: &mut Context) -> GameResult {
+        // eprintln!("DRAWING");
+        if !self.dirty {
+            yield_now();
+            return Ok(());
+        }
+        // ggez::graphics::clear(ctx, [0.0, 0.0, 0.0, 1.0].into());
+        for (i, pix) in self.colors.iter().enumerate() {
+            let rectangle = ggez::graphics::Mesh::new_rectangle(
+                ctx,
+                ggez::graphics::DrawMode::fill(),
+                GridPosition {
+                    x: i as i16,
+                    y: 0,
+                }.into(),
+                [
+                    (pix.red as f32 / 255.0).powf(1.0/4.2), // (pix.red * 4) as f32 / 255.0,
+                    (pix.grn as f32 / 255.0).powf(1.0/4.2), // (pix.grn * 4) as f32 / 255.0,
+                    (pix.blu as f32 / 255.0).powf(1.0/4.2), // (pix.blu * 4) as f32 / 255.0,
+                    1.0
+                ].into()
+            )?;
+            ggez::graphics::draw(ctx, &rectangle, (ggez::mint::Point2 { x: 0.0, y: 0.0 },))?;
+        }
+
+        ggez::graphics::present(ctx)?;
+        self.dirty = false;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct GridPosition {
+    x: i16,
+    y: i16,
+}
+
+use std::sync::atomic::AtomicUsize;
+
+static X_CT: AtomicUsize = AtomicUsize::new(0);
+static Y_CT: AtomicUsize = AtomicUsize::new(0);
+
+/// We implement the `From` trait, which in this case allows us to convert easily between
+/// a GridPosition and a ggez `graphics::Rect` which fills that grid cell.
+/// Now we can just call `.into()` on a `GridPosition` where we want a
+/// `Rect` that represents that grid cell.
+impl From<GridPosition> for ggez::graphics::Rect {
+    fn from(pos: GridPosition) -> Self {
+        ggez::graphics::Rect::new_i32(
+            pos.x as i32 * (900.0 / X_CT.load(Ordering::Acquire) as f32) as i32,
+            pos.y as i32 * (900.0 / X_CT.load(Ordering::Acquire) as f32) as i32,
+            (900.0 / X_CT.load(Ordering::Acquire) as f32) as i32,
+            (900.0 / X_CT.load(Ordering::Acquire) as f32) as i32,
+        )
+    }
+}
+
+/// And here we implement `From` again to allow us to easily convert between
+/// `(i16, i16)` and a `GridPosition`.
+impl From<(i16, i16)> for GridPosition {
+    fn from(pos: (i16, i16)) -> Self {
+        GridPosition { x: pos.0, y: pos.1 }
+    }
 }

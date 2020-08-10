@@ -19,3 +19,6 @@ members = [
   "qemu-run",
 ]
 exclude = ["firmware"]
+
+[profile.release]
+debug = true
