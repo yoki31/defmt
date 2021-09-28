@@ -99,6 +99,10 @@ fn decode(decoder: &mut dyn StreamDecoder) -> Result<(), DecodeError> {
                 eprintln!("failed to decode defmt data");
                 return Err(DecodeError::Malformed);
             }
+            Err(DecodeError::TableEntryNotFound(index)) => {
+                eprintln!("failed to find table entry '{}'", index);
+                return Err(DecodeError::TableEntryNotFound(index));
+            }
         }
     }
 }

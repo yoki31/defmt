@@ -302,6 +302,8 @@ pub enum DecodeError {
     UnexpectedEof,
 
     Malformed,
+    /// Lookup of table entry with index failed
+    TableEntryNotFound(usize),
 }
 
 impl From<io::Error> for DecodeError {
@@ -319,6 +321,9 @@ impl fmt::Display for DecodeError {
         match self {
             DecodeError::UnexpectedEof => f.write_str("unexpected end of stream"),
             DecodeError::Malformed => f.write_str("malformed data"),
+            DecodeError::TableEntryNotFound(index) => {
+                f.write_str(&format!("table entry '{}' not found", index))
+            }
         }
     }
 }

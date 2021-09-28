@@ -98,6 +98,10 @@ fn main() -> anyhow::Result<()> {
                     log::error!("failed to decode defmt data: {:x?}", frames);
                     return Err(defmt_decoder::DecodeError::Malformed.into());
                 }
+                Err(defmt_decoder::DecodeError::TableEntryNotFound(index)) => {
+                    log::error!("failed to find table entry: {}", index);
+                    return Err(defmt_decoder::DecodeError::TableEntryNotFound(index).into());
+                }
             }
         }
     }

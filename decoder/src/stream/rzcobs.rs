@@ -89,7 +89,7 @@ impl<'a> StreamDecoder for Rzcobs<'a> {
         match self.table.decode(&frame) {
             Ok((frame, _consumed)) => Ok(frame),
             Err(DecodeError::UnexpectedEof) => Err(DecodeError::Malformed),
-            Err(DecodeError::Malformed) => Err(DecodeError::Malformed),
+            Err(err) => Err(err),
         }
     }
 }
