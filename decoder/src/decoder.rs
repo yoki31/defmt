@@ -32,8 +32,8 @@ impl<'t, 'b> Decoder<'t, 'b> {
         let index = self.bytes.read_u16::<LE>()? as usize;
         let format = self
             .table
-            .get_without_level(index as usize)
-            .map_err(|_| DecodeError::Malformed)?;
+            .get_without_level(index)
+            .map_err(|_| DecodeError::TableEntryNotFound(index))?;
 
         Ok(format)
     }
@@ -187,8 +187,8 @@ impl<'t, 'b> Decoder<'t, 'b> {
 
                     let string = self
                         .table
-                        .get_without_level(str_index as usize)
-                        .map_err(|_| DecodeError::Malformed)?;
+                        .get_without_level(str_index)
+                        .map_err(|_| DecodeError::TableEntryNotFound(str_index))?;
 
                     args.push(Arg::IStr(string));
                 }
@@ -244,8 +244,8 @@ impl<'t, 'b> Decoder<'t, 'b> {
 
                         let format = self
                             .table
-                            .get_without_level(index as usize)
-                            .map_err(|_| DecodeError::Malformed)?;
+                            .get_without_level(index)
+                            .map_err(|_| DecodeError::TableEntryNotFound(index))?;
 
                         if format.contains('|') {
                             // enum

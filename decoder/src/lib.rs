@@ -227,7 +227,7 @@ impl Table {
 
         let (level, format) = self
             .get_with_level(index as usize)
-            .map_err(|_| DecodeError::Malformed)?;
+            .map_err(|_| DecodeError::TableEntryNotFound(index as usize))?;
 
         let args = decoder.decode_format(format)?;
 
