@@ -11,7 +11,7 @@ mod targets;
 mod utils;
 
 use crate::utils::{
-    load_expected_output, overwrite_expected_output, run_capturing_stdout, run_command, rustc_is_nightly,
+    load_expected_output, overwrite_expected_output, run_capturing_stdout, rustc_is_nightly, Cmd,
 };
 
 static ALL_ERRORS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(vec![]));
@@ -147,25 +147,33 @@ fn test_host(deny_warnings: bool) {
         vec![]
     };
 
-    do_test(|| run_command("cargo check --workspace", None, &env), "host");
+    do_test(|| Cmd::new("cargo check --workspace").envs(&env).run(), "host");
 
     do_test(
-        || run_command("cargo check --workspace --features unstable-test", None, &env),
+        || {
+            Cmd::new("cargo check --workspace --features unstable-test")
+                .envs(&env)
+                .run()
+        },
         "host",
     );
 
     do_test(
-        || run_command("cargo check --workspace --features alloc", None, &env),
+        || {
+            Cmd::new("cargo check --workspace --features alloc")
+                .envs(&env)
+                .run()
+        },
         "host",
     );
 
     do_test(
-        || run_command("cargo test --workspace --features unstable-test", None, &[]),
+        || Cmd::new("cargo test --workspace --features unstable-test").run(),
         "host",
     );
 
     do_test(
-        || run_command("cargo test --workspace --features unstable-test", None, &[]),
+        || Cmd::new("cargo test --workspace --features unstable-test").run(),
         "host",
     );
 }
@@ -179,17 +187,12 @@ fn test_cross() {
     ];
 
     for target in &targets {
-        do_test(
-            || run_command(&format!("cargo check --target {} -p defmt", target), None, &[]),
-            "cross",
-        );
+        do_test(|| Cmd::new("cargo check -p defmt").target(target).run(), "cross");
         do_test(
             || {
-                run_command(
-                    &format!("cargo check --target {} -p defmt --features alloc", target),
-                    None,
-                    &[],
-                )
+                Cmd::new("cargo check  -p defmt --features alloc")
+                    .target(target)
+                    .run()
             },
             "cross",
         );
@@ -197,44 +200,36 @@ fn test_cross() {
 
     do_test(
         || {
-            run_command(
-                "cargo check --target thumbv6m-none-eabi --workspace --exclude defmt-itm --exclude firmware",
-                Some("firmware"),
-                &[],
-            )
+            Cmd::new("cargo check --target thumbv6m-none-eabi --exclude defmt-itm --exclude firmware")
+                .cwd("firmware")
+                .run()
         },
         "cross",
     );
 
     do_test(
         || {
-            run_command(
-                "cargo check --target thumbv7em-none-eabi --workspace",
-                Some("firmware"),
-                &[],
-            )
+            Cmd::new("cargo check --target thumbv7em-none-eabi")
+                .cwd("firmware")
+                .run()
         },
         "cross",
     );
 
     do_test(
         || {
-            run_command(
-                "cargo check --target thumbv6m-none-eabi --features print-defmt",
-                Some("firmware/panic-probe"),
-                &[],
-            )
+            Cmd::new("cargo check --target thumbv6m-none-eabi --features print-defmt")
+                .cwd("firmware/panic-probe")
+                .run()
         },
         "cross",
     );
 
     do_test(
         || {
-            run_command(
-                "cargo check --target thumbv6m-none-eabi --features print-rtt",
-                Some("firmware/panic-probe"),
-                &[],
-            )
+            Cmd::new("cargo check --target thumbv6m-none-eabi --features print-rtt")
+                .cwd("firmware/panic-probe")
+                .run()
         },
         "cross",
     )
@@ -327,22 +322,20 @@ fn test_single_snapshot(name: &str, features: &str, overwrite: bool) -> anyhow::
 
 fn test_book() {
     println!("🧪 book");
-    do_test(|| run_command("cargo clean", None, &[]), "book");
+    do_test(|| Cmd::new("cargo clean").run(), "book");
 
     do_test(
-        || run_command("cargo build -p defmt --features unstable-test", None, &[]),
+        || Cmd::new("cargo build -p defmt --features unstable-test").run(),
         "book",
     );
 
     do_test(
         || {
-            run_command(
-                "mdbook test -L ../target/debug -L ../target/debug/deps",
-                Some("book"),
-                // logging macros need this but mdbook, not being Cargo, doesn't set the env var so
-                // we use a dummy value
-                &[("CARGO_CRATE_NAME", "krate")],
-            )
+            Cmd::new("mdbook test -L ../target/debug -L ../target/debug/deps")
+                .cwd("book")
+                // logging macros need this but mdbook doesn't set it so we use a dummy value
+                .envs(&[("CARGO_CRATE_NAME", "krate")])
+                .run()
         },
         "book",
     );
@@ -350,8 +343,7 @@ fn test_book() {
 
 fn test_lint() {
     println!("🧪 lint");
-    do_test(|| run_command("cargo clean", None, &[]), "lint");
-    do_test(|| run_command("cargo fmt --all -- --check", None, &[]), "lint");
-
-    do_test(|| run_command("cargo clippy --workspace", None, &[]), "lint");
+    do_test(|| Cmd::new("cargo clean").run(), "lint");
+    do_test(|| Cmd::new("cargo fmt --all -- --check").run(), "lint");
+    do_test(|| Cmd::new("cargo clippy --workspace").run(), "lint");
 }

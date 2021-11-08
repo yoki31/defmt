@@ -1,3 +1,5 @@
+mod cmd;
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -7,6 +9,8 @@ use std::{
 
 use anyhow::{anyhow, Context};
 use colored::Colorize;
+
+pub use cmd::Cmd;
 
 pub fn load_expected_output(name: &str, is_test: bool) -> anyhow::Result<String> {
     let path = expected_output_path(name, is_test);
@@ -56,33 +60,6 @@ pub fn run_capturing_stdout(cmd: &mut Command) -> anyhow::Result<String> {
             Err(anyhow!(""))
         }
     }
-}
-
-pub fn run_command(cmdline: &str, cwd: Option<&str>, envs: &[(&str, &str)]) -> anyhow::Result<()> {
-    let cmd_split = cmdline.split(' ').collect::<Vec<_>>();
-
-    let mut cmd = Command::new(cmd_split[0]);
-    cmd.args(&cmd_split[1..]).envs(envs.iter().copied());
-
-    let cmdline = if let Some(path) = cwd {
-        cmd.current_dir(path);
-        format!("{}$ {}", path, cmdline)
-    } else {
-        cmdline.to_string()
-    };
-
-    println!("🏃 {}", cmdline);
-
-    cmd.status()
-        .map_err(|e| anyhow!("could not run '{}': {}", cmdline, e))
-        .and_then(|exit_status| match exit_status.success() {
-            true => Ok(()),
-            false => Err(anyhow!(
-                "'{}' did not finish successfully: {}",
-                cmdline,
-                exit_status
-            )),
-        })
 }
 
 pub fn rustc_is_nightly() -> bool {
