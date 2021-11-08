@@ -147,35 +147,14 @@ fn test_host(deny_warnings: bool) {
         vec![]
     };
 
-    do_test(|| Cmd::new("cargo check --workspace").envs(&env).run(), "host");
-
-    do_test(
-        || {
-            Cmd::new("cargo check --workspace --features unstable-test")
-                .envs(&env)
-                .run()
-        },
-        "host",
-    );
-
-    do_test(
-        || {
-            Cmd::new("cargo check --workspace --features alloc")
-                .envs(&env)
-                .run()
-        },
-        "host",
-    );
-
-    do_test(
-        || Cmd::new("cargo test --workspace --features unstable-test").run(),
-        "host",
-    );
-
-    do_test(
-        || Cmd::new("cargo test --workspace --features unstable-test").run(),
-        "host",
-    );
+    [
+        Cmd::new("cargo check --workspace").envs(&env),
+        Cmd::new("cargo check --workspace --features unstable-test").envs(&env),
+        Cmd::new("cargo check --workspace --features alloc").envs(&env),
+        Cmd::new("cargo test --workspace --features unstable-test"),
+    ]
+    .into_iter()
+    .for_each(|cmd| do_test(|| cmd.run(), "host"));
 }
 
 fn test_cross() {
@@ -187,52 +166,25 @@ fn test_cross() {
     ];
 
     for target in &targets {
-        do_test(|| Cmd::new("cargo check -p defmt").target(target).run(), "cross");
-        do_test(
-            || {
-                Cmd::new("cargo check  -p defmt --features alloc")
-                    .target(target)
-                    .run()
-            },
-            "cross",
-        );
+        [
+            Cmd::new("cargo check -p defmt").target(target),
+            Cmd::new("cargo check -p defmt --features alloc").target(target),
+        ]
+        .into_iter()
+        .for_each(|cmd| do_test(|| cmd.run(), "cross"));
     }
 
-    do_test(
-        || {
-            Cmd::new("cargo check --target thumbv6m-none-eabi --exclude defmt-itm --exclude firmware")
-                .cwd("firmware")
-                .run()
-        },
-        "cross",
-    );
-
-    do_test(
-        || {
-            Cmd::new("cargo check --target thumbv7em-none-eabi")
-                .cwd("firmware")
-                .run()
-        },
-        "cross",
-    );
-
-    do_test(
-        || {
-            Cmd::new("cargo check --target thumbv6m-none-eabi --features print-defmt")
-                .cwd("firmware/panic-probe")
-                .run()
-        },
-        "cross",
-    );
-
-    do_test(
-        || {
-            Cmd::new("cargo check --target thumbv6m-none-eabi --features print-rtt")
-                .cwd("firmware/panic-probe")
-                .run()
-        },
-        "cross",
-    )
+    [
+        Cmd::new("cargo check --target thumbv6m-none-eabi --exclude defmt-itm --exclude firmware")
+            .cwd("firmware"),
+        Cmd::new("cargo check --target thumbv7em-none-eabi").cwd("firmware"),
+        Cmd::new("cargo check --target thumbv6m-none-eabi --features print-defmt")
+            .cwd("firmware/panic-probe"),
+        Cmd::new("cargo check --target thumbv6m-none-eabi --features print-rtt")
+            .cwd("firmware/panic-probe"),
+    ]
+    .into_iter()
+    .for_each(|cmd| do_test(|| cmd.run(), "cross"));
 }
 
 fn test_snapshot(overwrite: bool, snapshot: Option<Snapshot>) {
@@ -322,23 +274,17 @@ fn test_single_snapshot(name: &str, features: &str, overwrite: bool) -> anyhow::
 
 fn test_book() {
     println!("🧪 book");
-    do_test(|| Cmd::new("cargo clean").run(), "book");
 
-    do_test(
-        || Cmd::new("cargo build -p defmt --features unstable-test").run(),
-        "book",
-    );
-
-    do_test(
-        || {
-            Cmd::new("mdbook test -L ../target/debug -L ../target/debug/deps")
-                .cwd("book")
-                // logging macros need this but mdbook doesn't set it so we use a dummy value
-                .envs(&[("CARGO_CRATE_NAME", "krate")])
-                .run()
-        },
-        "book",
-    );
+    [
+        Cmd::new("cargo clean"),
+        Cmd::new("cargo build -p defmt --features unstable-test"),
+        Cmd::new("mdbook test -L ../target/debug -L ../target/debug/deps")
+            .cwd("book")
+            // logging macros need this but mdbook, not being cargo, doesn't set it so we use a dummy value
+            .envs(&[("CARGO_CRATE_NAME", "krate")]),
+    ]
+    .into_iter()
+    .for_each(|cmd| do_test(|| cmd.run(), "book"));
 }
 
 fn test_lint() {

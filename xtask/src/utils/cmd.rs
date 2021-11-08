@@ -19,23 +19,23 @@ impl Cmd {
         }
     }
 
-    pub fn cwd(&mut self, cwd: &str) -> &mut Self {
+    pub fn cwd(mut self, cwd: &str) -> Self {
         self.cmd_line = format!("{}$ {}", cwd, self.cmd_line);
         self.cmd.current_dir(cwd);
         self
     }
 
-    pub fn envs(&mut self, envs: &[(&str, &str)]) -> &mut Self {
+    pub fn envs(mut self, envs: &[(&str, &str)]) -> Self {
         self.cmd.envs(envs.iter().cloned());
         self
     }
 
-    pub fn target(&mut self, target: &str) -> &mut Self {
+    pub fn target(mut self, target: &str) -> Self {
         self.cmd.args(&["--target", target]);
         self
     }
 
-    pub fn run(&mut self) -> anyhow::Result<()> {
+    pub fn run(mut self) -> anyhow::Result<()> {
         let cmd_line = self.cmd_line.as_str();
         println!("🏃 {}", cmd_line);
 
