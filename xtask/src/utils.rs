@@ -58,23 +58,19 @@ pub fn run_capturing_stdout(cmd: &mut Command) -> anyhow::Result<String> {
     }
 }
 
-pub fn run_command(
-    program: &str,
-    args: &[&str],
-    cwd: Option<&str>,
-    envs: &[(&str, &str)],
-) -> anyhow::Result<()> {
-    let mut cmd = Command::new(program);
-    cmd.args(args).envs(envs.iter().copied());
+pub fn run_command(cmdline: &str, cwd: Option<&str>, envs: &[(&str, &str)]) -> anyhow::Result<()> {
+    let cmd_split = cmdline.split(' ').collect::<Vec<_>>();
 
-    let cwd = if let Some(path) = cwd {
+    let mut cmd = Command::new(cmd_split[0]);
+    cmd.args(&cmd_split[1..]).envs(envs.iter().copied());
+
+    let cmdline = if let Some(path) = cwd {
         cmd.current_dir(path);
-        format!("{}$ ", path)
+        format!("{}$ {}", path, cmdline)
     } else {
-        "".to_string()
+        cmdline.to_string()
     };
 
-    let cmdline = format!("{}{} {}", cwd, program, args.join(" "));
     println!("🏃 {}", cmdline);
 
     cmd.status()
